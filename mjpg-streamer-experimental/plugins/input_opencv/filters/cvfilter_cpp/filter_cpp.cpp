@@ -31,6 +31,7 @@ bool filter_init(const char * args, void** filter_ctx) {
 */
 void filter_process(void* filter_ctx, Mat &src, Mat &dst) {
     // TODO insert your filter code here
+    // cv::cvtColor(src, src, cv::COLOR_BGR2RGB);
     dst = src;
 }
 

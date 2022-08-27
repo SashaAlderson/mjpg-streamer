@@ -23,8 +23,11 @@
 #include <getopt.h>
 #include <dlfcn.h>
 #include <pthread.h>
+#include <future>
 
 #include "input_opencv.h"
+#include "yolact_uint8.h"
+#include "common.h"
 
 #include "opencv2/opencv.hpp"
 
@@ -374,12 +377,31 @@ int input_run(int id)
     return 0;
 }
 
+static unsigned long long min(Frames* frames) {
+    if (frames[0].frame_num < frames[1].frame_num)
+        return frames[0].frame_num;
+    else 
+        return frames[1].frame_num; 
+}
+
 void *worker_thread(void *arg)
 {
     input * in = (input*)arg;
     context *pctx = (context*)in->context;
     context_settings *settings = (context_settings*)pctx->init_settings;
-    
+
+    unsigned long long counter = 0;
+    unsigned long long showed = 0;
+    Frames frames[2];
+    Model yolact1("yolact_50_nosoft_KL_uint8.tmfile", &frames[0]);
+    std::thread t1(yolact1);
+    t1.detach();
+
+    Model yolact2("yolact_50_nosoft_KL_uint8.tmfile", &frames[1]);
+    std::thread t2(yolact2);
+    t2.detach();
+    std::cout << "Created models!" << std::endl;
+
     /* set cleanup handler to cleanup allocated resources */
     pthread_cleanup_push(worker_cleanup, arg);
 
@@ -419,29 +441,52 @@ void *worker_thread(void *arg)
     // the mat, so that it doesn't need to copy the data each time
     if (pctx->filter_init_frame != NULL)
         src = pctx->filter_init_frame(pctx->filter_ctx);
-    
+    std::cout << "Start displaying!" << std::endl;
+    double start = get_current_time(); 
     while (!pglobal->stop) {
-        if (!pctx->capture.read(src))
+        if (!pctx->capture.read(src)) {
+            std::cout << "Can't read from source!";
             break; // TODO
-            
-        // call the filter function
-        pctx->filter_process(pctx->filter_ctx, src, dst);
-            
-        /* copy JPG picture to global buffer */
-        pthread_mutex_lock(&in->db);
-        
-        // take whatever Mat it returns, and write it to jpeg buffer
-        imencode(".jpg", dst, jpeg_buffer, compression_params);
-        
-        // TODO: what to do if imencode returns an error?
-        
-        // std::vector is guaranteed to be contiguous
-        in->buf = &jpeg_buffer[0];
-        in->size = jpeg_buffer.size();
-        
-        /* signal fresh_frame */
-        pthread_cond_broadcast(&in->db_update);
-        pthread_mutex_unlock(&in->db);
+        }
+        for (auto& frame: frames) {
+            if (frame.status == inferenced && frame.frame_num == min(frames)) {
+                // call the filter function
+                pctx->filter_process(pctx->filter_ctx, frame.img, dst);
+                    
+                /* copy JPG picture to global buffer */
+                pthread_mutex_lock(&in->db);
+                
+                // take whatever Mat it returns, and write it to jpeg buffer
+                imencode(".jpg", dst, jpeg_buffer, compression_params);
+                
+                // TODO: what to do if imencode returns an error?
+                
+                // std::vector is guaranteed to be contiguous
+                in->buf = &jpeg_buffer[0];
+                in->size = jpeg_buffer.size();
+                
+                /* signal fresh_frame */
+                pthread_cond_broadcast(&in->db_update);
+                pthread_mutex_unlock(&in->db);
+
+                showed++;
+                frame.frame_num = UINT64_MAX;               
+                frame.status = waiting; 
+                if (showed%15==0) {
+                    std::cout << "\r" << "Fps: " << (15 / (get_current_time() - start)) * 1000 << std::flush;
+                    start = get_current_time();
+                }
+            }          
+        }
+        for (auto& frame: frames) {
+            if (frame.status == waiting) {
+                frame.img = src.clone();
+                frame.frame_num = counter;
+                frame.status = inferencing;
+                break;
+            }
+        }
+        counter++;     
     }
     
     IPRINT("leaving input thread, calling cleanup function now\n");

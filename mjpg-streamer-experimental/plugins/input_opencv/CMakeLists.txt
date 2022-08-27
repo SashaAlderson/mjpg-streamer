@@ -1,22 +1,27 @@
+cmake_minimum_required(VERSION 2.8.3)
+set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
-# TODO: which components do I need?
-# To fix the error: "undefined symbol: _ZN2cv12VideoCaptureC1Ev"
 find_package(OpenCV COMPONENTS core imgproc highgui videoio)
 
-MJPG_STREAMER_PLUGIN_OPTION(input_opencv "OpenCV input plugin")
-                            # ONLYIF OpenCV_FOUND ${OpenCV_VERSION_MAJOR} EQUAL 4)
+set(CMAKE_BUILD_TYPE Release)
+  enable_language(CXX)
+  include_directories(include ${OpenCV_INCLUDE_DIRS})
+  include_directories(/usr/include)
 
-if (PLUGIN_INPUT_OPENCV)
-    enable_language(CXX)
-    include_directories(${OpenCV_INCLUDE_DIRS})
+  # project("yolact" CXX)
 
-    MJPG_STREAMER_PLUGIN_COMPILE(input_opencv input_opencv.cpp)
-    
-    target_link_libraries(input_opencv ${OpenCV_LIBS})
-    
-    add_subdirectory(filters/cvfilter_cpp)
-    add_subdirectory(filters/cvfilter_py)
-    
-endif()
+  set(TENGINE_LIBRARY_DIR /usr/lib )
 
+  set(TENGINE_LIBRARY
+      -L${TENGINE_LIBRARY_DIR} 
+      -ltengine-lite)
 
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -std=gnu++17")
+ 
+  add_library(input_opencv SHARED input_opencv.cpp yolact_uint8.cpp) 
+  target_link_libraries(input_opencv ${TENGINE_LIBRARY} ${OpenCV_LIBS} -pthread)
+  
+  install(TARGETS input_opencv)
+
+  add_subdirectory(filters/cvfilter_cpp)
+  add_subdirectory(filters/cvfilter_py)
