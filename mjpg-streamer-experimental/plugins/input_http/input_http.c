@@ -127,17 +127,17 @@ int input_run(int id)
 }
 
 
-void on_image_received(char * data, int length){
-        /* copy JPG picture to global buffer */
-        pthread_mutex_lock(&pglobal->in[plugin_number].db);
+void on_image_received(char * data, int length) 
+{
+    /* copy JPG picture to global buffer */
+    pthread_mutex_lock(&pglobal->in[plugin_number].db);
 
-        pglobal->in[plugin_number].size = length;
-        memcpy(pglobal->in[plugin_number].buf, data, pglobal->in[plugin_number].size);
+    pglobal->in[plugin_number].size = length;
+    memcpy(pglobal->in[plugin_number].buf, data, pglobal->in[plugin_number].size);
 
-        /* signal fresh_frame */
-        pthread_cond_broadcast(&pglobal->in[plugin_number].db_update);
-        pthread_mutex_unlock(&pglobal->in[plugin_number].db);
-
+    /* signal fresh_frame */
+    pthread_cond_broadcast(&pglobal->in[plugin_number].db_update);
+    pthread_mutex_unlock(&pglobal->in[plugin_number].db);
 }
 
 void *worker_thread(void *arg)
